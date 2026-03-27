@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quantity Measurement</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../assets/css/measurement.css">
+</head>
+<body>
+  <main class="measurement-page">
+    <section class="measurement-card">
+      <header class="card-header">
+        <div class="header-logo" aria-hidden="true">
+          <svg viewBox="0 0 240 240" role="presentation" focusable="false">
+            <circle cx="120" cy="18" r="12" fill="#0b0b0b"></circle>
+            <rect x="112" y="30" width="16" height="18" rx="7" fill="#0b0b0b"></rect>
+            <rect x="108" y="48" width="24" height="58" rx="8" fill="#2c78d0"></rect>
+            <path d="M38 72c12-12 28-14 48-8 24 8 38 8 68-2 17-6 31-4 48 10" fill="none" stroke="#0b0b0b" stroke-width="12" stroke-linecap="round"></path>
+            <path d="M40 72c2 10 2 16-4 24" fill="none" stroke="#0b0b0b" stroke-width="8" stroke-linecap="round"></path>
+            <path d="M201 73c-2 10-2 16 4 24" fill="none" stroke="#0b0b0b" stroke-width="8" stroke-linecap="round"></path>
+            <rect x="112" y="98" width="16" height="102" rx="8" fill="#0b0b0b"></rect>
+            <path d="M112 98c4-9 12-9 16 0" fill="#0b0b0b"></path>
+            <path d="M44 98v16" stroke="#18b837" stroke-width="4" stroke-linecap="round"></path>
+            <path d="M196 98v16" stroke="#0b0b0b" stroke-width="4" stroke-linecap="round"></path>
+            <path d="M44 114v18M34 114l-8 48M54 114l28 48" stroke="#1c1c1c" stroke-width="1.6" stroke-linecap="round"></path>
+            <path d="M196 114v18M186 114l-28 48M206 114l8 48" stroke="#1c1c1c" stroke-width="1.6" stroke-linecap="round"></path>
+            <path d="M20 164c16 10 49 10 65 0-7 19-17 28-32 28s-26-9-33-28Z" fill="#0b0b0b"></path>
+            <path d="M157 164c16 10 49 10 65 0-7 19-17 28-32 28s-26-9-33-28Z" fill="#0b0b0b"></path>
+            <path d="M20 164c22-4 44-4 65 0" fill="#2c78d0"></path>
+            <path d="M157 164c22-4 44-4 65 0" fill="#2c78d0"></path>
+            <path d="M96 200h48c10 0 16 4 16 10v12H80v-12c0-6 6-10 16-10Z" fill="#0b0b0b"></path>
+            <path d="M90 222h60c14 0 24 4 24 10v8H66v-8c0-6 10-10 24-10Z" fill="#0b0b0b"></path>
+            <path d="M105 201h30l-6 10h-18l-6-10Z" fill="#2c78d0"></path>
+          </svg>
+        </div>
+        <h1>Welcome To Quantity Measurement</h1>
+        <button class="logout-button" id="logoutButton" type="button" aria-label="Logout">
+          <span class="logout-text">Logout</span>
+          <svg class="logout-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M10 3h5a2 2 0 0 1 2 2v3h-2V5h-5v14h5v-3h2v3a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/>
+            <path fill="currentColor" d="m13.8 8.8 1.4-1.4L20.8 13l-5.6 5.6-1.4-1.4 3.2-3.2H4v-2h13l-3.2-3.2Z"/>
+          </svg>
+        </button>
+      </header>
+
+      <div class="card-body">
+        <section class="section-block">
+          <span class="section-label">CHOOSE TYPE</span>
+          <div class="type-grid">
+            <button class="type-card active" type="button" data-type="length">
+              <span class="type-icon">&#128207;</span>
+              <span class="type-name">Length</span>
+            </button>
+            <button class="type-card" type="button" data-type="weight">
+              <span class="type-icon">&#9878;</span>
+              <span class="type-name">Weight</span>
+            </button>
+            <button class="type-card" type="button" data-type="temperature">
+              <span class="type-icon">🌡️</span>
+              <span class="type-name">Temperature</span>
+            </button>
+            <button class="type-card" type="button" data-type="volume">
+              <span class="type-icon">&#129514;</span>
+              <span class="type-name">Volume</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <span class="section-label">CHOOSE ACTION</span>
+          <div class="action-grid">
+            <button class="action-button active" type="button" data-action="comparison">Comparison</button>
+            <button class="action-button" type="button" data-action="conversion">Conversion</button>
+            <button class="action-button" type="button" data-action="arithmetic">Arithmetic</button>
+          </div>
+        </section>
+
+        <form class="calculator-form" id="calculatorForm" novalidate>
+          <section class="calculator-layout active" data-layout="comparison">
+            <div class="field-block">
+              <label class="field-title" for="comparisonFromValue">FROM</label>
+              <div class="input-card">
+                <input class="value-input" id="comparisonFromValue" type="number" value="1" step="any">
+                <select class="unit-select" id="comparisonFromUnit"></select>
+              </div>
+            </div>
+
+            <div class="field-block">
+              <label class="field-title" for="comparisonToValue">TO</label>
+              <div class="input-card">
+                <input class="value-input" id="comparisonToValue" type="number" value="1000" step="any">
+                <select class="unit-select" id="comparisonToUnit"></select>
+              </div>
+            </div>
+          </section>
+
+          <section class="calculator-layout" data-layout="conversion">
+            <div class="field-block full-width">
+              <label class="field-title" for="conversionValue">VALUE</label>
+              <div class="input-card">
+                <input class="value-input" id="conversionValue" type="number" value="1" step="any">
+                <select class="unit-select" id="conversionFromUnit"></select>
+              </div>
+            </div>
+
+            <div class="arrow-chip">TO</div>
+
+            <div class="field-block full-width">
+              <label class="field-title" for="conversionToUnit">CONVERT INTO</label>
+              <div class="input-card compact-card">
+                <select class="unit-select single-select" id="conversionToUnit"></select>
+              </div>
+            </div>
+          </section>
+
+          <section class="calculator-layout arithmetic-layout" data-layout="arithmetic">
+            <div class="field-block">
+              <label class="field-title" for="arithmeticValue1">VALUE 1</label>
+              <div class="input-card">
+                <input class="value-input" id="arithmeticValue1" type="number" value="1" step="any">
+                <select class="unit-select" id="arithmeticUnit1"></select>
+              </div>
+            </div>
+
+            <div class="operator-box">
+              <select class="operator-select" id="arithmeticOperator" aria-label="Arithmetic operator">
+                <option value="+">+</option>
+                <option value="-">-</option>
+                <option value="/">/</option>
+              </select>
+            </div>
+
+            <div class="field-block">
+              <label class="field-title" for="arithmeticValue2">VALUE 2</label>
+              <div class="input-card">
+                <input class="value-input" id="arithmeticValue2" type="number" value="1" step="any">
+                <select class="unit-select" id="arithmeticUnit2"></select>
+              </div>
+            </div>
+
+            <div class="field-block result-target">
+              <label class="field-title" for="arithmeticResultUnit">RESULT UNIT</label>
+              <div class="input-card compact-card">
+                <select class="unit-select single-select" id="arithmeticResultUnit"></select>
+              </div>
+            </div>
+          </section>
+
+          <div class="submit-row">
+            <button class="calculate-button" id="calculateButton" type="submit">Calculate</button>
+          </div>
+        </form>
+
+        <section class="result-panel hidden" id="resultPanel" aria-live="polite">
+          <div class="result-copy">
+            <span class="result-label">RESULT</span>
+            <strong class="result-value" id="resultValue"></strong>
+          </div>
+          <div class="result-unit-wrap">
+            <select class="unit-select single-select" id="resultUnit"></select>
+          </div>
+        </section>
+
+        <p class="status-text" id="statusText"></p>
+      </div>
+    </section>
+  </main>
+
+  <script src="../../assets/js/measurement.js"></script>
+</body>
+</html>
