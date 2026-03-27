@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(93, 132, 255, 0.16), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(57, 83, 233, 0.14), transparent 24%),
+    linear-gradient(180deg, #f8fbff 0%, #edf3fb 100%);
+  color: #111827;
+  font-family: "Poppins", sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+* {
+  box-sizing: border-box;
+}
