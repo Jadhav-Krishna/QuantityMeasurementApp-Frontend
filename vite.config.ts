@@ -6,9 +6,14 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      "/auth": "http://localhost:8080",
+      "/auth/status": "http://localhost:8080",
+      "/auth/user": "http://localhost:8080",
+      "/auth/login": "http://localhost:8080",
+      "/auth/register": "http://localhost:8080",
+      "/auth/logout": "http://localhost:8080",
       "/api": "http://localhost:8080",
-      "/oauth2": "http://localhost:8080"
+      "/oauth2": "http://localhost:8080",
+      "/login": "http://localhost:8080"
     }
   }
 });

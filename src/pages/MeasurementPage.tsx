@@ -1,6 +1,6 @@
 import { AlertTriangle, ArrowRight, FlaskConical, History, LogOut, RefreshCcw, Ruler, Scale, Thermometer, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { BalanceLogo } from "../components/BalanceLogo";
 import { fetchAuthStatus, logout } from "../lib/auth";
 import { fetchHistory, measurementConfig, submitCalculation, type ActionKey, type MeasurementTypeKey } from "../lib/measurement";
@@ -38,6 +38,7 @@ const icons = {
 } as const;
 
 export function MeasurementPage() {
+  const navigate = useNavigate();
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -222,6 +223,11 @@ export function MeasurementPage() {
     }
   };
 
+  const handleLogout = async () => {
+    await logout();
+    navigate("/auth", { replace: true });
+  };
+
   return (
     <main className="min-h-screen px-3 py-4 sm:px-6 lg:px-10 lg:py-8">
       <section className="mx-auto w-full max-w-[1380px] overflow-hidden rounded-[30px] border border-white/70 bg-white/80 shadow-auth backdrop-blur">
@@ -235,7 +241,7 @@ export function MeasurementPage() {
           </div>
           <button
             type="button"
-            onClick={() => void logout()}
+            onClick={() => void handleLogout()}
             className="flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-semibold transition hover:bg-white/20"
           >
             <span className="hidden sm:inline">Logout</span>

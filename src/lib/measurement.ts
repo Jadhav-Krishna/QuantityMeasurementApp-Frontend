@@ -1,8 +1,6 @@
 import type { CalculationResponse, HistoryItem, QuantityDTO } from "../types";
-import { API_BASE_URL } from "../config";
 import { getToken } from "./auth";
-
-const buildUrl = (path: string) => `${API_BASE_URL}${path}`;
+import { buildApiUrl, buildAuthHeaders, getErrorMessage, parseResponseBody } from "./api";
 
 export const measurementConfig = {
   length: {
@@ -45,25 +43,17 @@ export type ActionKey = "comparison" | "conversion" | "arithmetic";
 
 export async function submitCalculation(endpoint: string, payload: { thisQuantityDTO: QuantityDTO; thatQuantityDTO: QuantityDTO }) {
   const token = getToken();
-  const headers: HeadersInit = {
-    "Content-Type": "application/json"
-  };
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch(buildUrl(endpoint), {
+  const response = await fetch(buildApiUrl(endpoint), {
     method: "POST",
-    headers,
+    headers: buildAuthHeaders(token, true),
     credentials: "include",
     body: JSON.stringify(payload)
   });
 
-  const data = await response.json().catch(() => ({}));
+  const data = await parseResponseBody(response);
 
   if (!response.ok) {
-    throw new Error(data.message || data.errorMessage || `Request failed with status ${response.status}`);
+    throw new Error(getErrorMessage(data, `Request failed with status ${response.status}`));
   }
 
   return data as CalculationResponse;
@@ -71,17 +61,16 @@ export async function submitCalculation(endpoint: string, payload: { thisQuantit
 
 export async function fetchHistory(endpoint: string) {
   const token = getToken();
-  const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
-  const response = await fetch(buildUrl(endpoint), {
-    headers,
+  const response = await fetch(buildApiUrl(endpoint), {
+    headers: buildAuthHeaders(token),
     credentials: "include"
   });
 
-  const data = await response.json().catch(() => []);
+  const data = await parseResponseBody(response);
 
   if (!response.ok) {
-    throw new Error((data && (data.message || data.errorMessage)) || "Unable to load history.");
+    throw new Error(getErrorMessage(data, "Unable to load history."));
   }
 
-  return data as HistoryItem[];
+  return Array.isArray(data) ? (data as HistoryItem[]) : [];
 }

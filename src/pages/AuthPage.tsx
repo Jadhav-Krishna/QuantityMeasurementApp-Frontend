@@ -77,7 +77,7 @@ export function AuthPage() {
   useEffect(() => {
     const run = async () => {
       const params = new URLSearchParams(window.location.search);
-      const token = params.get("token");
+      const token = params.get("token") ?? params.get("accessToken");
 
       if (token) {
         try {
@@ -154,7 +154,8 @@ export function AuthPage() {
       const response = await loginOrRegister("/auth/register", {
         name: signupForm.name,
         email: signupForm.email,
-        password: signupForm.password
+        password: signupForm.password,
+        mobile: signupForm.mobile
       });
       saveAuth(response);
       navigate("/measurement", { replace: true });
