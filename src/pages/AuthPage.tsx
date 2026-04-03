@@ -78,6 +78,7 @@ export function AuthPage() {
     const run = async () => {
       const params = new URLSearchParams(window.location.search);
       const token = params.get("token") ?? params.get("accessToken");
+      const authError = params.get("error");
 
       if (token) {
         try {
@@ -89,6 +90,14 @@ export function AuthPage() {
         } catch {
           clearAuth();
         }
+      }
+
+      if (authError) {
+        clearAuth();
+        setLoginStatus("Google sign-in failed. Please try again.");
+        setSignupStatus("Google sign-in failed. Please try again.");
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return;
       }
 
       try {

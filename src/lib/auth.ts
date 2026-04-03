@@ -1,4 +1,4 @@
-import { TOKEN_KEY, USER_KEY } from "../config";
+import { API_BASE_URL, TOKEN_KEY, USER_KEY } from "../config";
 import type { AuthResponse, AuthStatusResponse, User } from "../types";
 import { buildApiUrl, buildAuthHeaders, getErrorMessage, parseResponseBody } from "./api";
 
@@ -91,7 +91,9 @@ export async function loginOrRegister(path: "/auth/login" | "/auth/register", pa
 }
 
 export function startGoogleLogin() {
-  window.location.href = "/oauth2/authorization/google";
+  const authPath = "/oauth2/authorization/google";
+  const authUrl = API_BASE_URL ? `${API_BASE_URL}${authPath}` : authPath;
+  window.location.href = authUrl;
 }
 
 export async function logout() {
