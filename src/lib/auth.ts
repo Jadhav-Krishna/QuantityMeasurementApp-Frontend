@@ -91,7 +91,7 @@ export async function loginOrRegister(path: "/auth/login" | "/auth/register", pa
 }
 
 export function startGoogleLogin() {
-  window.location.href = buildApiUrl("/oauth2/authorization/google");
+  window.location.href = "/oauth2/authorization/google";
 }
 
 export async function logout() {
