@@ -1,4 +1,4 @@
-import { API_BASE_URL, TOKEN_KEY, USER_KEY } from "../config";
+import { API_BASE_URL, OAUTH_RETURN_TO_KEY, TOKEN_KEY, USER_KEY } from "../config";
 import type { AuthResponse, AuthStatusResponse, User } from "../types";
 import { buildApiUrl, buildAuthHeaders, getErrorMessage, parseResponseBody } from "./api";
 
@@ -18,6 +18,18 @@ export function saveUser(user: User) {
 export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+}
+
+export function saveOAuthReturnTo(path: string) {
+  sessionStorage.setItem(OAUTH_RETURN_TO_KEY, path);
+}
+
+export function consumeOAuthReturnTo() {
+  const path = sessionStorage.getItem(OAUTH_RETURN_TO_KEY);
+  if (path) {
+    sessionStorage.removeItem(OAUTH_RETURN_TO_KEY);
+  }
+  return path;
 }
 
 export async function fetchAuthStatus(): Promise<AuthStatusResponse> {
@@ -90,7 +102,8 @@ export async function loginOrRegister(path: "/auth/login" | "/auth/register", pa
   } satisfies AuthResponse;
 }
 
-export function startGoogleLogin() {
+export function startGoogleLogin(returnTo = "/measurement") {
+  saveOAuthReturnTo(returnTo);
   const authPath = "/oauth2/authorization/google";
   const authUrl = API_BASE_URL ? `${API_BASE_URL}${authPath}` : authPath;
   window.location.href = authUrl;

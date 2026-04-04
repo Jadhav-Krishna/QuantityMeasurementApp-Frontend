@@ -1,129 +1,91 @@
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, UserRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { BalanceLogo } from "../components/BalanceLogo";
 import { GoogleIcon } from "../components/GoogleIcon";
-import { clearAuth, fetchAuthStatus, fetchCurrentUser, loginOrRegister, saveAuth, saveUser, startGoogleLogin } from "../lib/auth";
+import { clearAuth, consumeOAuthReturnTo, fetchAuthStatus, fetchCurrentUser, loginOrRegister, saveAuth, startGoogleLogin } from "../lib/auth";
+import { resetGuestUses } from "../lib/measurement";
 
 type Mode = "login" | "signup";
 
-type LoginForm = {
-  email: string;
-  password: string;
-};
-
-type SignupForm = {
-  name: string;
-  email: string;
-  password: string;
-  mobile: string;
-};
-
-const initialLogin: LoginForm = {
-  email: "",
-  password: ""
-};
-
-const initialSignup: SignupForm = {
-  name: "",
-  email: "",
-  password: "",
-  mobile: ""
-};
-
 export function AuthPage() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<Mode>("signup");
-  const [loginForm, setLoginForm] = useState<LoginForm>(initialLogin);
-  const [signupForm, setSignupForm] = useState<SignupForm>(initialSignup);
+  const [searchParams] = useSearchParams();
+  const [mode, setMode] = useState<Mode>("login");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [signupName, setSignupName] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
   const [loginVisible, setLoginVisible] = useState(false);
   const [signupVisible, setSignupVisible] = useState(false);
   const [loginStatus, setLoginStatus] = useState("");
   const [signupStatus, setSignupStatus] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const returnTo = searchParams.get("returnTo") ?? consumeOAuthReturnTo() ?? "/measurement";
+
   const loginError = useMemo(() => {
-    if (!loginForm.email || !loginForm.password) {
-      return "";
-    }
-    if (!/\S+@\S+\.\S+/.test(loginForm.email)) {
-      return "Please enter a valid email address.";
-    }
-    if (loginForm.password.length < 6 || loginForm.password.length > 100) {
-      return "Password must be 6-100 characters.";
-    }
+    if (!loginEmail || !loginPassword) return "";
+    if (!/\S+@\S+\.\S+/.test(loginEmail)) return "Please enter a valid email address.";
+    if (loginPassword.length < 6 || loginPassword.length > 100) return "Password must be 6-100 characters.";
     return "";
-  }, [loginForm]);
+  }, [loginEmail, loginPassword]);
 
   const signupError = useMemo(() => {
-    if (!signupForm.name || !signupForm.email || !signupForm.password || !signupForm.mobile) {
-      return "";
-    }
-    if (!/^[A-Za-z ]{3,40}$/.test(signupForm.name)) {
-      return "Full name should contain only letters and spaces.";
-    }
-    if (!/\S+@\S+\.\S+/.test(signupForm.email)) {
-      return "Please enter a valid email address.";
-    }
-    if (!/^(?=.*[A-Za-z])(?=.*\d).{6,100}$/.test(signupForm.password)) {
-      return "Password must be 6-100 characters and include at least one letter and one number.";
-    }
-    if (!/^\d{10}$/.test(signupForm.mobile)) {
-      return "Mobile number must be exactly 10 digits.";
+    if (!signupName || !signupEmail || !signupPassword) return "";
+    if (!/^[A-Za-z ]{3,40}$/.test(signupName)) return "Full name should contain only letters and spaces.";
+    if (!/\S+@\S+\.\S+/.test(signupEmail)) return "Please enter a valid email address.";
+    if (!/^(?=.*[A-Za-z])(?=.*\d).{6,100}$/.test(signupPassword)) {
+      return "Password must be 6-100 characters with at least one letter and one number.";
     }
     return "";
-  }, [signupForm]);
+  }, [signupName, signupEmail, signupPassword]);
 
   useEffect(() => {
-    const run = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get("token") ?? params.get("accessToken");
-      const authError = params.get("error");
+    const token = searchParams.get("token") ?? searchParams.get("accessToken");
+    const authError = searchParams.get("error");
 
-      if (token) {
-        try {
-          const user = await fetchCurrentUser(token);
+    if (token) {
+      fetchCurrentUser(token)
+        .then((user) => {
           saveAuth({ accessToken: token, user });
-          window.history.replaceState({}, document.title, window.location.pathname);
-          navigate("/measurement", { replace: true });
-          return;
-        } catch {
+          resetGuestUses();
+          navigate(returnTo, { replace: true });
+        })
+        .catch(() => {
           clearAuth();
-        }
-      }
-
-      if (authError) {
-        clearAuth();
-        setLoginStatus("Google sign-in failed. Please try again.");
-        setSignupStatus("Google sign-in failed. Please try again.");
-        window.history.replaceState({}, document.title, window.location.pathname);
-        return;
-      }
-
-      try {
-        const status = await fetchAuthStatus();
-        if (status.authenticated) {
-          if (status.user) {
-            saveUser(status.user);
-          }
-          navigate("/measurement", { replace: true });
-        }
-      } catch {
-        clearAuth();
-      }
-    };
-
-    void run();
-  }, [navigate]);
-
-  const submitLogin = async (event: React.FormEvent) => {
-    event.preventDefault();
-
-    if (!loginForm.email || !loginForm.password) {
-      setLoginStatus("Please fill out all login fields.");
+          setLoginStatus("Google sign-in failed. Please try again.");
+        });
       return;
     }
 
+    if (authError) {
+      clearAuth();
+      setLoginStatus("Google sign-in failed. Please try again.");
+    }
+  }, [navigate, returnTo, searchParams]);
+
+  useEffect(() => {
+    if (searchParams.get("token") || searchParams.get("accessToken")) {
+      return;
+    }
+
+    fetchAuthStatus()
+      .then((status) => {
+        if (status.authenticated) {
+          navigate(returnTo, { replace: true });
+        }
+      })
+      .catch(() => {});
+  }, [navigate, returnTo, searchParams]);
+
+  const submitLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!loginEmail || !loginPassword) {
+      setLoginStatus("Please fill out all fields.");
+      return;
+    }
     if (loginError) {
       setLoginStatus(loginError);
       return;
@@ -133,9 +95,10 @@ export function AuthPage() {
     setLoginStatus("Logging in...");
 
     try {
-      const response = await loginOrRegister("/auth/login", loginForm);
+      const response = await loginOrRegister("/auth/login", { email: loginEmail, password: loginPassword });
       saveAuth(response);
-      navigate("/measurement", { replace: true });
+      resetGuestUses();
+      navigate(returnTo, { replace: true });
     } catch (error) {
       setLoginStatus(error instanceof Error ? error.message : "Login failed.");
     } finally {
@@ -145,12 +108,10 @@ export function AuthPage() {
 
   const submitSignup = async (event: React.FormEvent) => {
     event.preventDefault();
-
-    if (!signupForm.name || !signupForm.email || !signupForm.password || !signupForm.mobile) {
-      setSignupStatus("Please fill out all signup fields.");
+    if (!signupName || !signupEmail || !signupPassword) {
+      setSignupStatus("Please fill out all fields.");
       return;
     }
-
     if (signupError) {
       setSignupStatus(signupError);
       return;
@@ -161,13 +122,13 @@ export function AuthPage() {
 
     try {
       const response = await loginOrRegister("/auth/register", {
-        name: signupForm.name,
-        email: signupForm.email,
-        password: signupForm.password,
-        mobile: signupForm.mobile
+        name: signupName,
+        email: signupEmail,
+        password: signupPassword
       });
       saveAuth(response);
-      navigate("/measurement", { replace: true });
+      resetGuestUses();
+      navigate(returnTo, { replace: true });
     } catch (error) {
       setSignupStatus(error instanceof Error ? error.message : "Signup failed.");
     } finally {
@@ -175,60 +136,63 @@ export function AuthPage() {
     }
   };
 
+  const handleGoogleLogin = () => {
+    startGoogleLogin(returnTo);
+  };
+
   return (
     <main className="flex min-h-screen items-center justify-center px-4 py-8 sm:px-6 lg:px-10">
-      <section className="relative grid w-full max-w-6xl gap-6 lg:grid-cols-[1.02fr_0.98fr]">
+      <section className="relative w-full max-w-6xl space-y-6">
+        <section className="relative grid gap-6 lg:grid-cols-[1.02fr_0.98fr]">
         <div className="rounded-[32px] border border-white/60 bg-white/90 p-8 shadow-auth backdrop-blur md:p-12">
           <div className="mx-auto flex max-w-md flex-col items-center text-center">
             <div className="flex h-56 w-56 items-center justify-center rounded-full bg-gradient-to-br from-brand-100 via-[#eef5ff] to-[#dbe7ff] shadow-panel sm:h-64 sm:w-64">
               <BalanceLogo className="h-44 w-44 sm:h-52 sm:w-52" />
             </div>
-            <h1 className="mt-8 text-3xl font-bold tracking-wide text-slate-900 sm:text-4xl">QUANTITY MEASUREMENT APP</h1>
+            <h1 className="mt-8 text-3xl font-bold tracking-wide text-slate-900 sm:text-4xl">
+              QUANTITY MEASUREMENT APP
+            </h1>
             <p className="mt-4 max-w-sm text-sm leading-7 text-slate-500 sm:text-base">
-              Sign in to compare, convert, and calculate quantity measurements with your backend-powered app.
+              Sign in to save history, view credits, and make payments. Every guest gets 5 free calculation credits before recharge is needed.
             </p>
+            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-left">
+              <p className="text-sm font-semibold text-amber-900">Guest users get 5 free measurement credits.</p>
+              <p className="mt-1 text-sm leading-6 text-amber-800">
+                You can start calculating right away, then log in later when you want history and recharge access.
+              </p>
+            </div>
           </div>
         </div>
 
         <section className="rounded-[28px] border border-slate-200/80 bg-white/95 p-6 shadow-auth backdrop-blur sm:p-8">
           <div className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1">
-            <button
-              type="button"
-              onClick={() => {
-                setMode("login");
-                setLoginStatus("");
-                setSignupStatus("");
-              }}
-              className={`rounded-xl px-4 py-3 text-sm font-semibold tracking-wide transition ${
-                mode === "login" ? "bg-white text-slate-900 shadow" : "text-slate-500"
-              }`}
-            >
-              LOGIN
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode("signup");
-                setLoginStatus("");
-                setSignupStatus("");
-              }}
-              className={`rounded-xl px-4 py-3 text-sm font-semibold tracking-wide transition ${
-                mode === "signup" ? "bg-white text-slate-900 shadow" : "text-slate-500"
-              }`}
-            >
-              SIGNUP
-            </button>
+            {(["login", "signup"] as Mode[]).map((currentMode) => (
+              <button
+                key={currentMode}
+                type="button"
+                onClick={() => {
+                  setMode(currentMode);
+                  setLoginStatus("");
+                  setSignupStatus("");
+                }}
+                className={`rounded-xl px-4 py-3 text-sm font-semibold tracking-wide transition ${
+                  mode === currentMode ? "bg-white text-slate-900 shadow" : "text-slate-500"
+                }`}
+              >
+                {currentMode.toUpperCase()}
+              </button>
+            ))}
           </div>
 
           {mode === "login" ? (
             <form className="mt-8 space-y-5" onSubmit={submitLogin}>
-              <FieldLabel htmlFor="loginEmail" label="Email Id" />
+              <FieldLabel htmlFor="loginEmail" label="Email" />
               <FieldInput
                 id="loginEmail"
                 type="email"
-                value={loginForm.email}
+                value={loginEmail}
                 onChange={(value) => {
-                  setLoginForm((current) => ({ ...current, email: value }));
+                  setLoginEmail(value);
                   setLoginStatus("");
                 }}
               />
@@ -236,11 +200,11 @@ export function AuthPage() {
               <FieldLabel htmlFor="loginPassword" label="Password" />
               <PasswordField
                 id="loginPassword"
-                value={loginForm.password}
+                value={loginPassword}
                 visible={loginVisible}
                 onToggle={() => setLoginVisible((current) => !current)}
                 onChange={(value) => {
-                  setLoginForm((current) => ({ ...current, password: value }));
+                  setLoginPassword(value);
                   setLoginStatus("");
                 }}
               />
@@ -252,16 +216,24 @@ export function AuthPage() {
               >
                 Login
               </button>
-
-              <button
-                type="button"
-                onClick={startGoogleLogin}
-                className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 font-medium text-slate-700 transition hover:border-brand-400 hover:text-brand-700"
-              >
-                <GoogleIcon />
-                <span>Continue with Google</span>
-              </button>
-
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 font-medium text-slate-700 transition hover:border-brand-400 hover:text-brand-700"
+                >
+                  <GoogleIcon />
+                  <span>Google Login</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/measurement")}
+                  className="flex w-full items-center justify-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 font-semibold text-amber-900 transition hover:bg-amber-100"
+                >
+                  <UserRound className="h-5 w-5" />
+                  <span>Guest User</span>
+                </button>
+              </div>
               <StatusText text={loginStatus || loginError} />
             </form>
           ) : (
@@ -269,20 +241,20 @@ export function AuthPage() {
               <FieldLabel htmlFor="signupName" label="Full Name" />
               <FieldInput
                 id="signupName"
-                value={signupForm.name}
+                value={signupName}
                 onChange={(value) => {
-                  setSignupForm((current) => ({ ...current, name: value }));
+                  setSignupName(value);
                   setSignupStatus("");
                 }}
               />
 
-              <FieldLabel htmlFor="signupEmail" label="Email Id" />
+              <FieldLabel htmlFor="signupEmail" label="Email" />
               <FieldInput
                 id="signupEmail"
                 type="email"
-                value={signupForm.email}
+                value={signupEmail}
                 onChange={(value) => {
-                  setSignupForm((current) => ({ ...current, email: value }));
+                  setSignupEmail(value);
                   setSignupStatus("");
                 }}
               />
@@ -290,22 +262,11 @@ export function AuthPage() {
               <FieldLabel htmlFor="signupPassword" label="Password" />
               <PasswordField
                 id="signupPassword"
-                value={signupForm.password}
+                value={signupPassword}
                 visible={signupVisible}
                 onToggle={() => setSignupVisible((current) => !current)}
                 onChange={(value) => {
-                  setSignupForm((current) => ({ ...current, password: value }));
-                  setSignupStatus("");
-                }}
-              />
-
-              <FieldLabel htmlFor="signupMobile" label="Mobile Number" />
-              <FieldInput
-                id="signupMobile"
-                type="tel"
-                value={signupForm.mobile}
-                onChange={(value) => {
-                  setSignupForm((current) => ({ ...current, mobile: value.replace(/\D/g, "").slice(0, 10) }));
+                  setSignupPassword(value);
                   setSignupStatus("");
                 }}
               />
@@ -317,46 +278,49 @@ export function AuthPage() {
               >
                 Signup
               </button>
-
-              <button
-                type="button"
-                onClick={startGoogleLogin}
-                className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 font-medium text-slate-700 transition hover:border-brand-400 hover:text-brand-700"
-              >
-                <GoogleIcon />
-                <span>Continue with Google</span>
-              </button>
-
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 font-medium text-slate-700 transition hover:border-brand-400 hover:text-brand-700"
+                >
+                  <GoogleIcon />
+                  <span>Google Login</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/measurement")}
+                  className="flex w-full items-center justify-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 font-semibold text-amber-900 transition hover:bg-amber-100"
+                >
+                  <UserRound className="h-5 w-5" />
+                  <span>Guest User</span>
+                </button>
+              </div>
               <StatusText text={signupStatus || signupError} />
             </form>
           )}
+        </section>
         </section>
       </section>
     </main>
   );
 }
 
-type FieldLabelProps = {
-  htmlFor: string;
-  label: string;
-};
-
-function FieldLabel({ htmlFor, label }: FieldLabelProps) {
-  return (
-    <label htmlFor={htmlFor} className="block text-sm font-medium text-slate-800">
-      {label}
-    </label>
-  );
+function FieldLabel({ htmlFor, label }: { htmlFor: string; label: string }) {
+  return <label htmlFor={htmlFor} className="block text-sm font-medium text-slate-800">{label}</label>;
 }
 
-type FieldInputProps = {
+function FieldInput({
+  id,
+  type = "text",
+  value,
+  onChange
+}: {
   id: string;
   type?: string;
   value: string;
   onChange: (value: string) => void;
-};
-
-function FieldInput({ id, type = "text", value, onChange }: FieldInputProps) {
+}) {
   return (
     <input
       id={id}
@@ -368,15 +332,19 @@ function FieldInput({ id, type = "text", value, onChange }: FieldInputProps) {
   );
 }
 
-type PasswordFieldProps = {
+function PasswordField({
+  id,
+  value,
+  visible,
+  onToggle,
+  onChange
+}: {
   id: string;
   value: string;
   visible: boolean;
   onToggle: () => void;
   onChange: (value: string) => void;
-};
-
-function PasswordField({ id, value, visible, onToggle, onChange }: PasswordFieldProps) {
+}) {
   return (
     <div className="relative mt-2">
       <input
@@ -397,10 +365,6 @@ function PasswordField({ id, value, visible, onToggle, onChange }: PasswordField
   );
 }
 
-type StatusTextProps = {
-  text: string;
-};
-
-function StatusText({ text }: StatusTextProps) {
+function StatusText({ text }: { text: string }) {
   return <p className="min-h-6 text-sm font-medium text-[#ad2f39]">{text}</p>;
 }
