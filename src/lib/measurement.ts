@@ -55,6 +55,11 @@ function saveGuestUsesRemaining(remaining: number): number {
   return normalized;
 }
 
+function consumeGuestUse(): number {
+  const remaining = getGuestUsesRemaining();
+  return saveGuestUsesRemaining(Math.max(0, remaining - 1));
+}
+
 export function resetGuestUses(): void {
   localStorage.removeItem(GUEST_USES_KEY);
 }
@@ -113,6 +118,12 @@ export async function submitCalculation(
   const headerRemaining = response.headers.get("X-Guest-Uses-Remaining");
   if (headerRemaining !== null) {
     const remaining = saveGuestUsesRemaining(parseInt(headerRemaining, 10));
+    if (onGuestRemaining) {
+      onGuestRemaining(remaining);
+    }
+  } else if (!token) {
+    // Fallback for deployments where the proxy path does not preserve the guest-usage header.
+    const remaining = consumeGuestUse();
     if (onGuestRemaining) {
       onGuestRemaining(remaining);
     }

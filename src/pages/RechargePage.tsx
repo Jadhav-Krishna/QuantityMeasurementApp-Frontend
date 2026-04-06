@@ -1,7 +1,7 @@
 import { ArrowLeft, CheckCircle, Clock, Coins, XCircle, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { fetchAuthStatus } from "../lib/auth";
+import { fetchAuthStatus, saveUser } from "../lib/auth";
 import { createOrder, fetchCredits, fetchPaymentConfig, fetchTransactions, loadRazorpayScript, verifyPayment } from "../lib/payment";
 import type { PaymentConfigResponse, TransactionResponse, User } from "../types";
 
@@ -52,6 +52,14 @@ export function RechargePage() {
     setTxLoading(true);
     const [nextCredits, nextTransactions] = await Promise.all([fetchCredits(user.id), fetchTransactions(user.id)]);
     setCredits(nextCredits);
+    setUser((current) => {
+      if (!current) {
+        return current;
+      }
+      const nextUser = { ...current, credits: nextCredits };
+      saveUser(nextUser);
+      return nextUser;
+    });
     setTransactions(nextTransactions);
     setTxLoading(false);
   };
@@ -93,7 +101,11 @@ export function RechargePage() {
               response.razorpay_signature
             );
             setSuccess(true);
-            setStatusText(`Payment successful. ${transaction.creditsAdded} credits added to your account.`);
+            setStatusText(
+              transaction.invoiceNumber
+                ? `Payment successful. ${transaction.creditsAdded} credits added. Invoice ${transaction.invoiceNumber} was generated and emailed.`
+                : `Payment successful. ${transaction.creditsAdded} credits added to your account.`
+            );
             await refreshData();
           } catch (error) {
             setSuccess(false);
@@ -255,6 +267,9 @@ export function RechargePage() {
                     <div>
                       <p className="font-medium text-slate-800">+{transaction.creditsAdded} credits</p>
                       <p className="text-xs text-slate-500">{new Date(transaction.createdAt).toLocaleString()}</p>
+                      {transaction.invoiceNumber ? (
+                        <p className="text-xs text-slate-500">Invoice: {transaction.invoiceNumber}</p>
+                      ) : null}
                     </div>
                   </div>
                   <div className="text-right">

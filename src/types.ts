@@ -36,6 +36,8 @@ export type TransactionResponse = {
   userId: number;
   razorpayOrderId: string;
   razorpayPaymentId: string;
+  invoiceId?: number | null;
+  invoiceNumber?: string | null;
   amountPaise: number;
   creditsAdded: number;
   status: "CREATED" | "SUCCESS" | "FAILED";

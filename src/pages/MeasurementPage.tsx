@@ -93,7 +93,16 @@ export function MeasurementPage() {
   const refreshCredits = async (activeUserId: number) => {
     setCreditsLoading(true);
     try {
-      setCredits(await fetchCredits(activeUserId));
+      const nextCredits = await fetchCredits(activeUserId);
+      setCredits(nextCredits);
+      setUser((current) => {
+        if (!current || current.id !== activeUserId) {
+          return current;
+        }
+        const nextUser = { ...current, credits: nextCredits };
+        saveUser(nextUser);
+        return nextUser;
+      });
     } finally {
       setCreditsLoading(false);
     }
@@ -286,7 +295,8 @@ export function MeasurementPage() {
     setAuthenticated(false);
     setUser(null);
     setCredits(0);
-    navigate("/auth", { replace: true });
+    setGuestUsesRemaining(getGuestUsesRemaining());
+    navigate("/measurement", { replace: true });
   };
 
   const handleDeleteHistory = async (historyId: number) => {
