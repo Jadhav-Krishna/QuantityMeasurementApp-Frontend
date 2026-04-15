@@ -1,9 +1,21 @@
 import { AlertTriangle, ArrowRight, FlaskConical, History, LogOut, RefreshCcw, Ruler, Scale, Thermometer, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { BalanceLogo } from "../components/BalanceLogo";
-import { fetchAuthStatus, logout } from "../lib/auth";
-import { fetchHistory, measurementConfig, submitCalculation, type ActionKey, type MeasurementTypeKey } from "../lib/measurement";
+import { CreditsBar } from "../components/CreditsBar";
+import { fetchAuthStatus, logout, saveUser } from "../lib/auth";
+import { fetchCredits } from "../lib/payment";
+import {
+  CreditRequiredError,
+  deleteUserHistory,
+  GuestLimitError,
+  fetchUserHistory,
+  getGuestUsesRemaining,
+  measurementConfig,
+  submitCalculation,
+  type ActionKey,
+  type MeasurementTypeKey
+} from "../lib/measurement";
 import type { CalculationResponse, HistoryItem, QuantityDTO, User } from "../types";
 
 type ComparisonState = {
@@ -38,12 +50,16 @@ const icons = {
 } as const;
 
 export function MeasurementPage() {
+  const navigate = useNavigate();
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [credits, setCredits] = useState(0);
+  const [creditsLoading, setCreditsLoading] = useState(false);
   const [selectedType, setSelectedType] = useState<MeasurementTypeKey>("length");
   const [selectedAction, setSelectedAction] = useState<ActionKey>("comparison");
   const [statusText, setStatusText] = useState("");
+  const [guestUsesRemaining, setGuestUsesRemaining] = useState<number>(() => getGuestUsesRemaining());
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CalculationResponse | null>(null);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
@@ -51,6 +67,7 @@ export function MeasurementPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyStatus, setHistoryStatus] = useState("");
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [deletingHistoryId, setDeletingHistoryId] = useState<number | null>(null);
   const [comparison, setComparison] = useState<ComparisonState>({
     fromValue: "1",
     fromUnit: measurementConfig.length.units[0].value,
@@ -73,12 +90,50 @@ export function MeasurementPage() {
 
   const units = measurementConfig[selectedType].units;
 
+  const refreshCredits = async (activeUserId: number) => {
+    setCreditsLoading(true);
+    try {
+      const nextCredits = await fetchCredits(activeUserId);
+      setCredits(nextCredits);
+      setUser((current) => {
+        if (!current || current.id !== activeUserId) {
+          return current;
+        }
+        const nextUser = { ...current, credits: nextCredits };
+        saveUser(nextUser);
+        return nextUser;
+      });
+    } finally {
+      setCreditsLoading(false);
+    }
+  };
+
+  const refreshHistory = async (activeUserId: number) => {
+    setHistoryLoading(true);
+    setHistoryStatus("");
+    try {
+      const data = await fetchUserHistory(activeUserId);
+      setHistoryItems(data);
+      if (data.length === 0) {
+        setHistoryStatus("No history found yet.");
+      }
+    } catch (error) {
+      setHistoryItems([]);
+      setHistoryStatus(error instanceof Error ? error.message : "Unable to load history.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   useEffect(() => {
     const run = async () => {
       try {
         const status = await fetchAuthStatus();
         setAuthenticated(status.authenticated);
         setUser(status.user ?? null);
+        if (status.authenticated && status.user) {
+          await Promise.all([refreshCredits(status.user.id), refreshHistory(status.user.id)]);
+        }
       } finally {
         setReady(true);
       }
@@ -112,40 +167,36 @@ export function MeasurementPage() {
   }, [selectedType]);
 
   useEffect(() => {
-    if (!authenticated) {
+    if (!authenticated || !user) {
+      setHistoryItems([]);
       return;
     }
 
-    const loadHistory = async () => {
-      setHistoryLoading(true);
-      setHistoryStatus("");
+    void refreshHistory(user.id);
+  }, [authenticated, historyRefreshKey, user]);
 
-      try {
-        let endpoint = "/api/v1/quantities/my/history";
-
-        if (historyFilter === "errored") {
-          endpoint = "/api/v1/quantities/my/history/errored";
-        } else if (historyFilter === "operation") {
-          endpoint = `/api/v1/quantities/my/history/operation/${selectedAction === "comparison" ? "compare" : selectedAction === "conversion" ? "convert" : arithmetic.operator === "+" ? "add" : arithmetic.operator === "-" ? "subtract" : "divide"}`;
-        } else if (historyFilter === "type") {
-          endpoint = `/api/v1/quantities/my/history/type/${measurementConfig[selectedType].measurementType}`;
-        }
-
-        const data = await fetchHistory(endpoint);
-        setHistoryItems(data);
-        if (data.length === 0) {
-          setHistoryStatus("No history found for this filter yet.");
-        }
-      } catch (error) {
-        setHistoryItems([]);
-        setHistoryStatus(error instanceof Error ? error.message : "Unable to load history.");
-      } finally {
-        setHistoryLoading(false);
-      }
-    };
-
-    void loadHistory();
-  }, [authenticated, arithmetic.operator, historyFilter, historyRefreshKey, selectedAction, selectedType]);
+  const filteredHistory = useMemo(() => {
+    if (historyFilter === "all") {
+      return historyItems;
+    }
+    if (historyFilter === "errored") {
+      return historyItems.filter((item) => item.error);
+    }
+    if (historyFilter === "operation") {
+      const currentOperation =
+        selectedAction === "comparison"
+          ? "compare"
+          : selectedAction === "conversion"
+            ? "convert"
+            : arithmetic.operator === "+"
+              ? "add"
+              : arithmetic.operator === "-"
+                ? "subtract"
+                : "divide";
+      return historyItems.filter((item) => item.operation === currentOperation);
+    }
+    return historyItems.filter((item) => item.thisMeasurementType.toLowerCase() === selectedType);
+  }, [arithmetic.operator, historyFilter, historyItems, selectedAction, selectedType]);
 
   const resultLabel = useMemo(() => {
     if (!result) {
@@ -164,10 +215,6 @@ export function MeasurementPage() {
     return <div className="flex min-h-screen items-center justify-center text-sm font-medium text-slate-500">Loading...</div>;
   }
 
-  if (!authenticated) {
-    return <Navigate to="/auth" replace />;
-  }
-
   const buildQuantityDTO = (value: string | number, unit: string): QuantityDTO => ({
     value: Number(value),
     unit,
@@ -178,25 +225,28 @@ export function MeasurementPage() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (authenticated && credits <= 0) {
+      setResult(null);
+      setStatusText("Your credits are exhausted. Please recharge to continue.");
+      navigate("/recharge");
+      return;
+    }
+
     setSubmitting(true);
     setResult(null);
     setStatusText("Calculating...");
 
     try {
       if (selectedAction === "comparison") {
-        const data = await submitCalculation("/api/v1/quantities/compare", {
+        setResult(await submitCalculation("/api/v1/quantities/compare", {
           thisQuantityDTO: buildQuantityDTO(comparison.fromValue, comparison.fromUnit),
           thatQuantityDTO: buildQuantityDTO(comparison.toValue, comparison.toUnit)
-        });
-        setResult(data);
-        setStatusText("Comparison completed from backend response.");
+        }, setGuestUsesRemaining));
       } else if (selectedAction === "conversion") {
-        const data = await submitCalculation("/api/v1/quantities/convert", {
+        setResult(await submitCalculation("/api/v1/quantities/convert", {
           thisQuantityDTO: buildQuantityDTO(conversion.value, conversion.fromUnit),
           thatQuantityDTO: buildQuantityDTO(0, conversion.toUnit)
-        });
-        setResult(data);
-        setStatusText("Calculation completed from backend response.");
+        }, setGuestUsesRemaining));
       } else {
         const endpoint =
           arithmetic.operator === "+"
@@ -204,21 +254,66 @@ export function MeasurementPage() {
             : arithmetic.operator === "-"
               ? "/api/v1/quantities/subtract"
               : "/api/v1/quantities/divide";
-        const data = await submitCalculation(endpoint, {
+        const response = await submitCalculation(endpoint, {
           thisQuantityDTO: buildQuantityDTO(arithmetic.value1, arithmetic.unit1),
           thatQuantityDTO: buildQuantityDTO(arithmetic.value2, arithmetic.unit2)
-        });
+        }, setGuestUsesRemaining);
         setResult({
-          ...data,
-          resultUnit: data.resultUnit ?? arithmetic.resultUnit
+          ...response,
+          resultUnit: response.resultUnit ?? arithmetic.resultUnit
         });
-        setStatusText("Calculation completed from backend response.");
+      }
+
+      setStatusText("Calculation completed from backend response.");
+
+      if (authenticated && user) {
+        const nextCredits = Math.max(0, credits - 1);
+        setCredits(nextCredits);
+        const nextUser = { ...user, credits: nextCredits };
+        setUser(nextUser);
+        saveUser(nextUser);
+        await Promise.all([refreshCredits(user.id), refreshHistory(user.id)]);
       }
     } catch (error) {
       setResult(null);
-      setStatusText(error instanceof Error ? error.message : "Unable to fetch calculation from backend.");
+      if (error instanceof CreditRequiredError) {
+        setStatusText(error.message);
+        navigate("/recharge");
+      } else if (error instanceof GuestLimitError) {
+        setStatusText(error.message);
+        navigate("/auth?returnTo=/recharge");
+      } else {
+        setStatusText(error instanceof Error ? error.message : "Unable to fetch calculation from backend.");
+      }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    setAuthenticated(false);
+    setUser(null);
+    setCredits(0);
+    setGuestUsesRemaining(getGuestUsesRemaining());
+    navigate("/measurement", { replace: true });
+  };
+
+  const handleDeleteHistory = async (historyId: number) => {
+    if (!user) {
+      return;
+    }
+
+    setDeletingHistoryId(historyId);
+    setHistoryStatus("");
+    try {
+      await deleteUserHistory(user.id, historyId);
+      await refreshHistory(user.id);
+      setHistoryStatus("History item removed.");
+    } catch (error) {
+      setHistoryStatus(error instanceof Error ? error.message : "Unable to remove history item.");
+    } finally {
+      setDeletingHistoryId(null);
     }
   };
 
@@ -230,17 +325,38 @@ export function MeasurementPage() {
             <BalanceLogo className="h-12 w-12 rounded-full bg-white/95 p-1 md:hidden" />
             <div>
               <h1 className="text-lg font-semibold sm:text-2xl">Welcome To Quantity Measurement</h1>
-              {user?.name ? <p className="mt-1 hidden text-sm text-white/85 sm:block">Signed in as {user.name}</p> : null}
+              {user?.name ? (
+                <p className="mt-1 hidden text-sm text-white/85 sm:block">Signed in as {user.name}</p>
+              ) : (
+                <p className="mt-1 hidden text-sm text-white/85 sm:block">Guest mode is enabled for quick calculations.</p>
+              )}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => void logout()}
-            className="flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-semibold transition hover:bg-white/20"
-          >
-            <span className="hidden sm:inline">Logout</span>
-            <LogOut className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-3">
+            <CreditsBar
+              credits={authenticated ? credits : guestUsesRemaining}
+              loading={authenticated ? creditsLoading : false}
+              isGuest={!authenticated}
+            />
+            {authenticated ? (
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                className="flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-semibold transition hover:bg-white/20"
+              >
+                <span className="hidden sm:inline">Logout</span>
+                <LogOut className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => navigate("/auth?returnTo=/measurement")}
+                className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-brand-700 transition hover:bg-brand-50"
+              >
+                Login to save history
+              </button>
+            )}
+          </div>
         </header>
 
         <div className="space-y-10 px-4 py-6 sm:px-8 sm:py-10">
@@ -351,7 +467,9 @@ export function MeasurementPage() {
                 <div className="flex items-center justify-center">
                   <select
                     value={arithmetic.operator}
-                    onChange={(event) => setArithmetic((current) => ({ ...current, operator: event.target.value as "+" | "-" | "/" }))}
+                    onChange={(event) =>
+                      setArithmetic((current) => ({ ...current, operator: event.target.value as "+" | "-" | "/" }))
+                    }
                     className="h-16 rounded-2xl border border-slate-200 bg-white px-5 text-2xl font-semibold text-slate-800 shadow-panel outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
                   >
                     <option value="+">+</option>
@@ -365,13 +483,13 @@ export function MeasurementPage() {
                   unit={arithmetic.unit2}
                   units={units}
                   onValueChange={(value) => setArithmetic((current) => ({ ...current, value2: value }))}
-                  onUnitChange={(unit) => setArithmetic((current) => ({ ...current, unit2: unit }))}
+                  onUnitChange={(unit) => setArithmetic((current) => ({ ...current, unit2: unit, resultUnit: unit }))}
                 />
                 <UnitOnlyCard
                   label="RESULT UNIT"
                   unit={arithmetic.resultUnit}
                   units={units}
-                  onUnitChange={(unit) => setArithmetic((current) => ({ ...current, resultUnit: unit }))}
+                  onUnitChange={(unit) => setArithmetic((current) => ({ ...current, resultUnit: unit, unit2: unit }))}
                 />
               </div>
             ) : null}
@@ -426,68 +544,109 @@ export function MeasurementPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Calculation History</h2>
-                  <p className="text-sm text-slate-500">Pulled from your backend history endpoints.</p>
+                  <p className="text-sm text-slate-500">Available after login so your measurements stay tied to your account and recharge history.</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setHistoryRefreshKey((current) => current + 1)}
-                className="flex items-center justify-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:text-slate-900"
-              >
-                <RefreshCcw className="h-4 w-4" />
-                <span>Refresh</span>
-              </button>
+              {authenticated ? (
+                <button
+                  type="button"
+                  onClick={() => setHistoryRefreshKey((current) => current + 1)}
+                  className="flex items-center justify-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:text-slate-900"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  <span>Refresh</span>
+                </button>
+              ) : null}
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {([
-                ["all", "All History"],
-                ["errored", "Errored"],
-                ["operation", "This Operation"],
-                ["type", "This Type"]
-              ] as [HistoryFilter, string][]).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setHistoryFilter(key)}
-                  className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-                    historyFilter === key
-                      ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
-                      : "bg-slate-50 text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {authenticated ? (
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {([
+                  ["all", "All History"],
+                  ["errored", "Errored"],
+                  ["operation", "This Operation"],
+                  ["type", "This Type"]
+                ] as [HistoryFilter, string][]).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setHistoryFilter(key)}
+                    className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                      historyFilter === key
+                        ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
+                        : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
             <div className="mt-5 space-y-4">
-              {historyLoading ? <p className="text-sm font-medium text-slate-500">Loading history...</p> : null}
-              {!historyLoading && historyStatus ? <p className="text-sm font-medium text-slate-500">{historyStatus}</p> : null}
-              {!historyLoading && !historyStatus && historyItems.length > 0 ? (
+              {!authenticated ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-sm font-medium text-slate-700">Log in to unlock your personal measurement history and paid credits.</p>
+                  <p className="mt-1 text-sm text-slate-500">Guest mode is only for free calculations. Recharge and history are available after login.</p>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => navigate("/auth?returnTo=/measurement")}
+                      className="rounded-full bg-brand-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-brand-600"
+                    >
+                      Login to view history
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/auth?returnTo=/recharge")}
+                      className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-brand-300 hover:text-brand-700"
+                    >
+                      Login to recharge
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {authenticated && historyLoading ? <p className="text-sm font-medium text-slate-500">Loading history...</p> : null}
+              {authenticated && !historyLoading && historyStatus ? <p className="text-sm font-medium text-slate-500">{historyStatus}</p> : null}
+              {authenticated && !historyLoading && !historyStatus && filteredHistory.length > 0 ? (
                 <div className="grid gap-4">
-                  {historyItems.map((item, index) => (
+                  {filteredHistory.map((item, index) => (
                     <article
-                      key={`${item.operation}-${index}-${item.thisUnit}-${item.thatUnit}-${item.resultValue}`}
+                      key={item.id ?? `${item.operation}-${index}-${item.thisUnit}-${item.thatUnit}-${item.resultValue}`}
                       className={`rounded-[22px] border px-4 py-4 shadow-sm sm:px-5 ${
                         item.error ? "border-rose-200 bg-rose-50/60" : "border-slate-200 bg-slate-50/70"
                       }`}
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
-                          <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
-                            item.error ? "bg-rose-100 text-rose-700" : "bg-brand-100 text-brand-700"
-                          }`}>
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
+                              item.error ? "bg-rose-100 text-rose-700" : "bg-brand-100 text-brand-700"
+                            }`}
+                          >
                             {item.operation}
                           </span>
                           <span className="text-sm font-medium text-slate-500">{item.thisMeasurementType}</span>
                         </div>
-                        {item.error ? (
-                          <div className="flex items-center gap-2 text-sm font-medium text-rose-700">
-                            <AlertTriangle className="h-4 w-4" />
-                            <span>Error</span>
-                          </div>
-                        ) : null}
+                        <div className="flex items-center gap-3">
+                          {item.error ? (
+                            <div className="flex items-center gap-2 text-sm font-medium text-rose-700">
+                              <AlertTriangle className="h-4 w-4" />
+                              <span>Error</span>
+                            </div>
+                          ) : null}
+                          {item.id ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteHistory(item.id!)}
+                              disabled={deletingHistoryId === item.id}
+                              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-rose-300 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              <span>{deletingHistoryId === item.id ? "Removing..." : "Remove"}</span>
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
 
                       <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-center">

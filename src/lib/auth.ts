@@ -1,7 +1,6 @@
-import { API_BASE_URL, TOKEN_KEY, USER_KEY } from "../config";
+import { API_BASE_URL, OAUTH_RETURN_TO_KEY, TOKEN_KEY, USER_KEY } from "../config";
 import type { AuthResponse, AuthStatusResponse, User } from "../types";
-
-const buildUrl = (path: string) => `${API_BASE_URL}${path}`;
+import { buildApiUrl, buildAuthHeaders, getErrorMessage, parseResponseBody } from "./api";
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -21,11 +20,22 @@ export function clearAuth() {
   localStorage.removeItem(USER_KEY);
 }
 
+export function saveOAuthReturnTo(path: string) {
+  sessionStorage.setItem(OAUTH_RETURN_TO_KEY, path);
+}
+
+export function consumeOAuthReturnTo() {
+  const path = sessionStorage.getItem(OAUTH_RETURN_TO_KEY);
+  if (path) {
+    sessionStorage.removeItem(OAUTH_RETURN_TO_KEY);
+  }
+  return path;
+}
+
 export async function fetchAuthStatus(): Promise<AuthStatusResponse> {
   const token = getToken();
-  const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
-  const response = await fetch(buildUrl("/auth/status"), {
-    headers,
+  const response = await fetch(buildApiUrl("/auth/status"), {
+    headers: buildAuthHeaders(token),
     credentials: "include"
   });
 
@@ -33,48 +43,85 @@ export async function fetchAuthStatus(): Promise<AuthStatusResponse> {
     return { authenticated: false };
   }
 
-  return response.json();
+  return (await parseResponseBody(response)) as AuthStatusResponse;
 }
 
 export async function fetchCurrentUser(token?: string) {
   const activeToken = token ?? getToken();
-  const headers: HeadersInit = activeToken ? { Authorization: `Bearer ${activeToken}` } : {};
-  const response = await fetch(buildUrl("/auth/user"), {
-    headers,
+  const response = await fetch(buildApiUrl("/auth/user"), {
+    headers: buildAuthHeaders(activeToken),
     credentials: "include"
   });
 
   if (!response.ok) {
-    throw new Error("Unable to load current user.");
+    throw new Error(getErrorMessage(await parseResponseBody(response), "Unable to load current user."));
   }
 
-  return (await response.json()) as User;
+  return (await parseResponseBody(response)) as User;
 }
 
+type AuthPayload = {
+  accessToken?: string;
+  token?: string;
+  jwtToken?: string;
+  user?: User;
+  data?: {
+    accessToken?: string;
+    token?: string;
+    jwtToken?: string;
+    user?: User;
+  };
+};
+
 export async function loginOrRegister(path: "/auth/login" | "/auth/register", payload: object) {
-  const response = await fetch(buildUrl(path), {
+  const response = await fetch(buildApiUrl(path), {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers: buildAuthHeaders(undefined, true),
     credentials: "include",
     body: JSON.stringify(payload)
   });
 
-  const data = await response.json().catch(() => ({}));
+  const data = (await parseResponseBody(response)) as AuthPayload;
 
   if (!response.ok) {
-    throw new Error(data.message || data.error || "Authentication failed.");
+    throw new Error(getErrorMessage(data, "Authentication failed."));
   }
 
-  return data as AuthResponse;
+  const accessToken = data.accessToken ?? data.token ?? data.jwtToken ?? data.data?.accessToken ?? data.data?.token ?? data.data?.jwtToken;
+  const user = data.user ?? data.data?.user;
+
+  if (!accessToken || !user) {
+    throw new Error("Authentication response is missing token or user details.");
+  }
+
+  return {
+    accessToken,
+    tokenType: "Bearer",
+    expiresIn: 0,
+    user
+  } satisfies AuthResponse;
 }
 
-export function startGoogleLogin() {
-  window.location.href = buildUrl("/oauth2/authorization/google");
+export function startGoogleLogin(returnTo = "/measurement") {
+  saveOAuthReturnTo(returnTo);
+  const authPath = "/oauth2/authorization/google";
+  const authUrl = API_BASE_URL ? `${API_BASE_URL}${authPath}` : authPath;
+  window.location.href = authUrl;
 }
 
 export async function logout() {
-  clearAuth();
-  window.location.href = buildUrl("/auth/logout");
+  const token = getToken();
+
+  try {
+    await fetch(buildApiUrl("/auth/logout"), {
+      method: "GET",
+      headers: buildAuthHeaders(token),
+      credentials: "include",
+      redirect: "manual"
+    });
+  } catch {
+    // Clear local auth state even if the backend logout request fails.
+  } finally {
+    clearAuth();
+  }
 }
